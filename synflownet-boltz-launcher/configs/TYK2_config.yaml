@@ -1,0 +1,7 @@
+target: TYK2
+reward_queue_path: "./dbs/reward_queue.db"
+persistent_replay_path: "./dbs/replay_buffer.db"
+reward_cache_path: "./dbs/reward_cache.db"
+reward_queue_max_size: 5_000
+persistent_replay_max_size: 10_000_000
+worker_batch_size: 20

@@ -1,0 +1,61 @@
+# Apply to all files without commiting:
+#   pre-commit run --all-files
+# Update this file:
+#   pre-commit autoupdate
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+    -   id: check-added-large-files
+    -   id: detect-private-key
+    -   id: check-ast
+    -   id: debug-statements
+    -   id: check-byte-order-marker
+    -   id: check-case-conflict
+    -   id: check-yaml
+    -   id: check-toml
+
+-   repo: https://gitlab.com/bmares/check-json5
+    rev: v1.0.0
+    hooks:
+    -   id: check-json5
+
+-   repo: https://github.com/asottile/pyupgrade
+    rev: v3.15.2
+    hooks:
+    -   id: pyupgrade
+        args: [--py39-plus]
+
+-   repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: "v0.4.2"
+    hooks:
+    -   id: ruff
+        args: [--fix]
+    -   id: ruff-format
+
+-   repo: https://github.com/PyCQA/bandit
+    rev: "1.7.8"
+    hooks:
+    -   id: bandit
+        args: ["-s", "B101,B311,B403,B301,B608,B603"]
+        exclude: tests/.*$
+
+-   repo: https://github.com/abravalheri/validate-pyproject
+    rev: v0.16
+    hooks:
+    -   id: validate-pyproject
+
+-   repo: local
+    hooks:
+    -   id: ruff-verify
+        name: Style Code with ruff
+        description: Verify that code is formatted correctly using ruff before commits can be pushed. An alternative is to use black, it just depends which is configured for CI for consistency.
+        language: system
+        entry: ruff format --check .
+        require_serial: false
+        pass_filenames: false
+        stages: [pre-push]
+
+default_install_hook_types:
+  - pre-commit
+  - pre-push

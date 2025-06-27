@@ -1,0 +1,136 @@
+[build-system]
+requires = [
+    "setuptools",
+    "setuptools-scm",
+    "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+
+[tool.setuptools]
+packages = ["synflownet"]
+[project.scripts]
+synflownet = "synflownet.cli:cli"
+
+[project]
+name = "synflownet"
+authors = [
+		{name = "Julien Roy", email = "julien.roy@recursion.com"},
+		{name = "Emmanuel Bengio", email = "emmanuel.bengio@recursion.com"},
+	]
+readme = "README.md"
+classifiers = [
+	"Operating System :: OS Independent",
+	"Programming Language :: Python",
+	"Programming Language :: Python :: 3",
+]
+keywords=["synflownet"]
+requires-python = ">=3.10"
+dynamic = [
+	"version",
+]
+dependencies = [
+	"torch",
+    "torch-geometric",
+    "torch-scatter",
+    "torch-sparse",
+    "torch-cluster",
+	"click",
+    "rdkit",
+    "scipy",
+    "networkx",
+    "tensorboard",
+	"loguru",
+	"tqdm",
+    "gitpython",
+    "botorch",
+    "omegaconf>=2.3",
+    "wandb",
+]
+
+[project.optional-dependencies]
+dev = [
+	"bandit",
+	"black",
+	"coverage",
+	"docstr-coverage",
+	"mypy",
+	"packaging",
+	"pre-commit",
+	"pytest",
+	"pytest-cov",
+	"pyupgrade",
+	"radon",
+	"roadie",
+	"ruff",
+	"types-click",
+	"tox",
+	"validate-pyproject[all]",
+]
+
+# Note: The GPU dependencies are quite opinionated, and assume py310, but if needed do install specific versions
+gpu = [
+    "torch @ https://download.pytorch.org/whl/cu124/torch-2.4.0%2Bcu124-cp310-cp310-linux_x86_64.whl#sha256=2cb28155635e3d3d0be198e3f3e7457a1d7b99e8c2eedc73fe22fab574d11a4c",
+	"torch_scatter @ https://data.pyg.org/whl/torch-2.4.0%2Bcu124/torch_scatter-2.1.2%2Bpt24cu124-cp310-cp310-linux_x86_64.whl",
+	"torch_sparse @ https://data.pyg.org/whl/torch-2.4.0%2Bcu124/torch_sparse-0.6.18%2Bpt24cu124-cp310-cp310-linux_x86_64.whl",
+	"torch_geometric",
+]
+
+
+[tool.distutils.bdist_wheel]
+universal = true
+
+[tool.pytest.ini_options]
+addopts = [
+	"--ignore", "setup.py",
+	"--ignore", "run_test.py",
+	"--tb", "native",
+	"--strict-markers",
+	"--durations=20",
+	"--cov-report", "term-missing",
+	"--cov=synflownet",
+]
+testpaths = ["tests"]
+env = [
+	"PYTHONHASHSEED=0",
+]
+
+[tool.bandit]
+exclude = "tests"
+
+[tool.ruff]
+lint.select = ["E", "F", "I"]
+lint.ignore = []
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".mypy_cache",
+    ".nox",
+    ".ruff_cache",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "build",
+    "dist",
+    "venv",
+]
+line-length = 140
+target-version = "py39"
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Disallow all relative imports.
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+[tool.ruff.lint.isort]
+detect-same-package = true
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+
+# Add internal packages here as they are added as dependencies
+[tool.ruff.lint.isort.sections]
