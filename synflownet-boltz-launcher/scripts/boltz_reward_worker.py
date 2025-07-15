@@ -42,10 +42,16 @@ def main(config: dict):
     # Retrieve protein sequence and msa file path
     with open(Path("data/target_to_data.yaml")) as f:
         target_to_data = yaml.safe_load(f)
-    protein_sequence = target_to_data[config["target"]]["protein_sequence"]
-    msa_file_path = target_to_data[config["target"]]["msa_file_path"]
-    logger.info(f"Protein sequence: {protein_sequence}")
-    logger.info(f"Msa file path: {msa_file_path}")
+
+    protein_sequences = []
+    msa_file_paths = []
+    for target in config["targets"]:
+        protein_sequences.append(target_to_data[target]["protein_sequence"])
+        msa_file_paths.append(target_to_data[target]["msa_file_path"])
+
+    assert len(protein_sequences) == len(msa_file_paths), "Every protein sequence must have a corresponding MSA file path"
+    for protein_seq, msa_path in zip(protein_sequences, msa_file_paths):
+        logger.info(f"Protein sequence: {protein_seq}, MSA file path: {msa_path}")
 
     current_batch = 0
     while True:
@@ -100,10 +106,13 @@ def main(config: dict):
         if not uncached_entries_df.empty:
             uncached_entries_len = len(uncached_entries_df)
             try:
+                #
+                # We will need to adjust this part if we want to use multiple targets
+                #
                 uncached_rewards_df = compute_rewards_with_boltz(
                     df=uncached_entries_df,
-                    protein_sequence=protein_sequence,
-                    msa_file_path=msa_file_path,
+                    protein_sequence=protein_sequences,
+                    msa_file_path=msa_file_paths,
                     worker_id=worker_id,
                 )
             except Exception:
@@ -212,14 +221,35 @@ def prepare_dirs(input_dir: str, output_dir: str) -> None:
     os.makedirs(output_dir, exist_ok=True)
 
 
-def prepare_boltz2_yaml_input_file(protein_sequence: str, ligand_smiles: str, yaml_input_path: str, msa_file_path: str) -> None:
-    yaml_dict = {
-        "sequences": [
-            {"protein": {"id": "A", "sequence": protein_sequence, "msa": msa_file_path, "cyclic": False}},
-            {"ligand": {"id": "B", "smiles": ligand_smiles}},
-        ],
-        "properties": [{"affinity": {"binder": "B"}}],
-    }
+def prepare_boltz2_yaml_input_file(protein_sequence: str | list[str], ligand_smiles: str, yaml_input_path: str, msa_file_path: str | list[str]) -> None:
+    if not isinstance(protein_sequence, list):
+        protein_sequence = [protein_sequence]
+    if not isinstance(msa_file_path, list):
+        msa_file_path = [msa_file_path]
+    assert len(protein_sequence) == len(msa_file_path), "Protein sequence and MSA file paths must have the same length"
+
+    yaml_dict = {"sequences": [], "properties": []}
+
+    unicode_string_ordinal_id = 65
+
+    for protein_seq, msa_path in zip(protein_sequence, msa_file_path):
+        protein_id = chr(unicode_string_ordinal_id)
+        unicode_string_ordinal_id += 1
+        yaml_dict["sequences"].append(
+            {"protein": {"id": protein_id, "sequence": protein_seq, "msa": msa_path, "cyclic": False}}
+        )
+
+    ligand_id = chr(unicode_string_ordinal_id)
+    yaml_dict["sequences"].append({"ligand": {"id": ligand_id, "smiles": ligand_smiles}})
+    yaml_dict["properties"].append({"affinity": {"binder": ligand_id}})
+
+#    yaml_dict = {
+#        "sequences": [
+#            {"protein": {"id": "A", "sequence": protein_sequence, "msa": msa_file_path, "cyclic": False}},
+#            {"ligand": {"id": "B", "smiles": ligand_smiles}},
+#        ],
+#        "properties": [{"affinity": {"binder": "B"}}],
+#    }
 
     with open(yaml_input_path, "w") as f:
         yaml.dump(yaml_dict, f, default_flow_style=False)
@@ -328,7 +358,7 @@ def collect_boltz_results(input_dir: str, predictions_path: str, query_name: str
     return result_dict
 
 
-def compute_rewards_with_boltz(df: pd.DataFrame, protein_sequence: str, msa_file_path: str, worker_id: int) -> pd.DataFrame:
+def compute_rewards_with_boltz(df: pd.DataFrame, protein_sequence: str | list[str], msa_file_path: str | list[str], worker_id: int) -> pd.DataFrame:
     assert "SMILES" in df.columns, "SMILES column is required"
 
     # Create temporary directory for worker
