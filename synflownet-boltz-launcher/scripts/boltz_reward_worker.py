@@ -39,8 +39,20 @@ def main(config: dict):
     # Initialise reward queue, replay buffer, and reward cache
     reward_queue, replay_buffer, reward_cache = initialise_dbs(config)
 
+    #
     # Retrieve protein sequence and msa file path
-    with open(Path("data/target_to_data.yaml")) as f:
+    #
+    # To ensure the anonymity of the targets, we keep the target to data mapping in a separate YAML file.
+    # If the path to this file is provided in the config, we will use it otherwise we will use the default path.
+    #
+    if "path_to_target_to_data" in config:
+        logger.info(f"Using custom path to target_to_data.yaml: {config['path_to_target_to_data']}")
+        target_to_data_path = Path(config["path_to_target_to_data"])
+    else:
+        logger.info("Using default path to target_to_data.yaml: data/target_to_data.yaml")
+        target_to_data_path = Path("data/target_to_data.yaml")
+
+    with open(target_to_data_path) as f:
         target_to_data = yaml.safe_load(f)
 
     protein_sequences = []
