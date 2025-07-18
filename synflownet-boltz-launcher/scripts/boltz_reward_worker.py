@@ -339,7 +339,12 @@ def collect_boltz_results(input_dir: str, predictions_path: str, query_name: str
     input_file_path = Path(input_dir) / f"{query_name}.yaml"
     with open(input_file_path) as f:
         input_file_content = yaml.safe_load(f)
-    smiles = input_file_content["sequences"][1]["ligand"]["smiles"]
+
+    for seq in input_file_content["sequences"]:
+        if "ligand" in seq:
+            smiles = seq["ligand"]["smiles"]
+            break
+
     result_dict["SMILES"] = smiles
 
     # Get both affinity and confidence files
