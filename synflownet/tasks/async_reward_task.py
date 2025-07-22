@@ -108,13 +108,13 @@ class AsyncRewardTrainer(StandardOnlineTrainer):
         cfg.print_every = 100
 
         # Conditioning
-        cfg.cond.temperature.sample_dist = "constant"
-        cfg.cond.temperature.dist_params = [32.0]
+        cfg.cond.temperature.sample_dist = "uniform"
+        cfg.cond.temperature.dist_params = [8.0, 64.0]
 
         # Algorithm
         cfg.algo.method = "TB"
         cfg.algo.max_nodes = 9
-        cfg.algo.sampling_tau = 0.99
+        cfg.algo.sampling_tau = 0.5
         cfg.algo.illegal_action_logreward = -75
         cfg.algo.train_random_action_prob = 0.05
         cfg.algo.tb.epsilon = None
@@ -134,11 +134,11 @@ class AsyncRewardTrainer(StandardOnlineTrainer):
 
         # Because the reward computation is done externally
         # we don't have any special treatment for validation samples
-        cfg.algo.valid_random_action_prob = 0.0
+        cfg.algo.valid_random_action_prob = 0.02
         cfg.algo.valid_num_from_policy = 0
-        cfg.num_validation_gen_steps = 0
-        cfg.validate_every = None
-        cfg.num_final_gen_steps = 0
+        cfg.num_validation_gen_steps = 10
+        cfg.validate_every = 500
+        cfg.num_final_gen_steps = 1000
 
         # This task assumes the use of an expensive external reward function
         # The reward here is not computed on Synflownet's side, but rather by

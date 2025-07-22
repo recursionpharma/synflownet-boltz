@@ -16,6 +16,8 @@ import yaml
 from loguru import logger
 from rdkit import Chem
 
+from cm_utils import experiment_tracking, s3_wizard
+
 
 def generate_unique_worker_id():
     timestamp_ms = int(time.time() * 1000) % 10_000_000
@@ -347,8 +349,16 @@ def collect_boltz_results(input_dir: str, predictions_path: str, query_name: str
 
     result_dict["SMILES"] = smiles
 
+    mol = Chem.MolFromSmiles(smiles)  # Validate SMILES
+    inchi = Chem.MolToInchi(mol)
+
+    boltz_results_from_inchi_path = s3_wizard.get_experiment_s3_prefix() / f"{inchi}"
+
     # Get both affinity and confidence files
     query_path = Path(predictions_path) / f"{query_name}"
+
+    s3_wizard.copy(input_file_path, boltz_results_from_inchi_path)
+    s3_wizard.copy(query_path, boltz_results_from_inchi_path, dir_hint=True)
 
     affinity_file_paths = list(query_path.rglob("affinity_*.json"))
     assert len(affinity_file_paths) == 1, f"Expected exactly one affinity file, got {len(affinity_file_paths)}"
@@ -433,4 +443,6 @@ if __name__ == "__main__":
     with open(args.config) as f:
         config = yaml.safe_load(f)
 
+    experiment_tracking.begin_experiment()
     main(config)
+    experiment_tracking.finish_experiment()
