@@ -9,6 +9,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
+from copy import deepcopy
 
 import medchem as mc
 import pandas as pd
@@ -59,13 +60,20 @@ def main(config: dict):
 
     protein_sequences = []
     msa_file_paths = []
+    constraints = []
     for target in config["targets"]:
         protein_sequences.append(target_to_data[target]["protein_sequence"])
         msa_file_paths.append(target_to_data[target]["msa_file_path"])
+        if "constraints" in target_to_data[target]:
+            constraints.append(target_to_data[target]["constraints"])
+        else:
+            constraints.append(None)
 
     assert len(protein_sequences) == len(msa_file_paths), "Every protein sequence must have a corresponding MSA file path"
-    for protein_seq, msa_path in zip(protein_sequences, msa_file_paths):
+    for protein_seq, msa_path, constraint in zip(protein_sequences, msa_file_paths, constraints):
         logger.info(f"Protein sequence: {protein_seq}, MSA file path: {msa_path}")
+        if constraint is not None:
+            logger.info(f"Constraints: {constraint}")
 
     current_batch = 0
     while True:
@@ -128,6 +136,7 @@ def main(config: dict):
                     protein_sequence=protein_sequences,
                     msa_file_path=msa_file_paths,
                     worker_id=worker_id,
+                    constraints=constraint
                 )
             except Exception:
                 logger.error(f"Error computing rewards with Boltz2:\n{traceback.format_exc()}")
@@ -235,27 +244,32 @@ def prepare_dirs(input_dir: str, output_dir: str) -> None:
     os.makedirs(output_dir, exist_ok=True)
 
 
-def prepare_boltz2_yaml_input_file(protein_sequence: str | list[str], ligand_smiles: str, yaml_input_path: str, msa_file_path: str | list[str]) -> None:
+def prepare_boltz2_yaml_input_file(protein_sequence: str | list[str], ligand_smiles: str, yaml_input_path: str, msa_file_path: str | list[str], constraints: list[dict | None]) -> None:
     if not isinstance(protein_sequence, list):
         protein_sequence = [protein_sequence]
     if not isinstance(msa_file_path, list):
         msa_file_path = [msa_file_path]
     assert len(protein_sequence) == len(msa_file_path), "Protein sequence and MSA file paths must have the same length"
 
-    yaml_dict = {"sequences": [], "properties": []}
+    yaml_dict = {"sequences": [], "properties": [], "constraints": []}
 
     unicode_string_ordinal_id = 65
 
-    for protein_seq, msa_path in zip(protein_sequence, msa_file_path):
+    ligand_id = chr(unicode_string_ordinal_id)
+    yaml_dict["sequences"].append({"ligand": {"id": ligand_id, "smiles": ligand_smiles}})
+    yaml_dict["properties"].append({"affinity": {"binder": ligand_id}})
+
+    for protein_seq, msa_path, constraint in zip(protein_sequence, msa_file_path, constraints):
         protein_id = chr(unicode_string_ordinal_id)
         unicode_string_ordinal_id += 1
         yaml_dict["sequences"].append(
             {"protein": {"id": protein_id, "sequence": protein_seq, "msa": msa_path, "cyclic": False}}
         )
+        if constraint is not None:
+            constraint[0]["contacts"][0] = protein_id  # Update the first contact with the protein ID
+            constraint["binder"] = ligand_id  # Add the binder ID to the constraint
+            yaml_dict["constraints"].append(constraint)
 
-    ligand_id = chr(unicode_string_ordinal_id)
-    yaml_dict["sequences"].append({"ligand": {"id": ligand_id, "smiles": ligand_smiles}})
-    yaml_dict["properties"].append({"affinity": {"binder": ligand_id}})
 
 #    yaml_dict = {
 #        "sequences": [
@@ -385,7 +399,7 @@ def collect_boltz_results(input_dir: str, predictions_path: str, query_name: str
     return result_dict
 
 
-def compute_rewards_with_boltz(df: pd.DataFrame, protein_sequence: str | list[str], msa_file_path: str | list[str], worker_id: int) -> pd.DataFrame:
+def compute_rewards_with_boltz(df: pd.DataFrame, protein_sequence: str | list[str], msa_file_path: str | list[str], worker_id: int, constraints: list[dict | None]) -> pd.DataFrame:
     assert "SMILES" in df.columns, "SMILES column is required"
 
     # Create temporary directory for worker
@@ -405,7 +419,7 @@ def compute_rewards_with_boltz(df: pd.DataFrame, protein_sequence: str | list[st
     for i in df.index:
         query_name = f"query{i}"
         yaml_input_path = f"{input_dir}/{query_name}.yaml"
-        prepare_boltz2_yaml_input_file(protein_sequence, df.at[i, "SMILES"], yaml_input_path, msa_file_path)
+        prepare_boltz2_yaml_input_file(protein_sequence, df.at[i, "SMILES"], yaml_input_path, msa_file_path, constraints)
         df.at[i, "query_name"] = query_name
 
     # Run inference
