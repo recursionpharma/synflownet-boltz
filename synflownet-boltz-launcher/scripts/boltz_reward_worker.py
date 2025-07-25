@@ -11,13 +11,15 @@ import traceback
 from pathlib import Path
 from copy import deepcopy
 
+import s3path
+
 import medchem as mc
 import pandas as pd
 import yaml
 from loguru import logger
 from rdkit import Chem
 
-from cm_utils import experiment_tracking, s3_wizard
+from cm_utils import s3_wizard
 
 
 def generate_unique_worker_id():
@@ -48,32 +50,17 @@ def main(config: dict):
     # To ensure the anonymity of the targets, we keep the target to data mapping in a separate YAML file.
     # If the path to this file is provided in the config, we will use it otherwise we will use the default path.
     #
-    if "path_to_target_to_data" in config:
-        logger.info(f"Using custom path to target_to_data.yaml: {config['path_to_target_to_data']}")
-        target_to_data_path = Path(config["path_to_target_to_data"])
-    else:
-        logger.info("Using default path to target_to_data.yaml: data/target_to_data.yaml")
-        target_to_data_path = Path("data/target_to_data.yaml")
+    logger.info("Config")
+    logger.info(json.dumps(config, indent=2))
+
+    if "path_to_boltz_input_file" not in config:
+        raise ValueError("Config must contain 'path_to_boltz_input_file' key")
+    
+    target_to_data_path = Path(config["path_to_boltz_input_file"])
 
     with open(target_to_data_path) as f:
-        target_to_data = yaml.safe_load(f)
+        boltz_input_config_template = yaml.safe_load(f)
 
-    protein_sequences = []
-    msa_file_paths = []
-    constraints = []
-    for target in config["targets"]:
-        protein_sequences.append(target_to_data[target]["protein_sequence"])
-        msa_file_paths.append(target_to_data[target]["msa_file_path"])
-        if "constraints" in target_to_data[target]:
-            constraints.append(target_to_data[target]["constraints"])
-        else:
-            constraints.append(None)
-
-    assert len(protein_sequences) == len(msa_file_paths), "Every protein sequence must have a corresponding MSA file path"
-    for protein_seq, msa_path, constraint in zip(protein_sequences, msa_file_paths, constraints):
-        logger.info(f"Protein sequence: {protein_seq}, MSA file path: {msa_path}")
-        if constraint is not None:
-            logger.info(f"Constraints: {constraint}")
 
     current_batch = 0
     while True:
@@ -133,10 +120,8 @@ def main(config: dict):
                 #
                 uncached_rewards_df = compute_rewards_with_boltz(
                     df=uncached_entries_df,
-                    protein_sequence=protein_sequences,
-                    msa_file_path=msa_file_paths,
+                    boltz_input_config_template=boltz_input_config_template,
                     worker_id=worker_id,
-                    constraints=constraint
                 )
             except Exception:
                 logger.error(f"Error computing rewards with Boltz2:\n{traceback.format_exc()}")
@@ -233,7 +218,7 @@ def get_cache_hits(reward_cache, batch_df: pd.DataFrame, smiles_list: list[str])
     return cached_entries_df, uncached_entries_df
 
 
-def prepare_dirs(input_dir: str, output_dir: str) -> None:
+def prepare_dirs(input_dir: str | Path, output_dir: str | Path) -> None:
     if Path(output_dir).exists():
         shutil.rmtree(output_dir)
 
@@ -244,32 +229,44 @@ def prepare_dirs(input_dir: str, output_dir: str) -> None:
     os.makedirs(output_dir, exist_ok=True)
 
 
-def prepare_boltz2_yaml_input_file(protein_sequence: str | list[str], ligand_smiles: str, yaml_input_path: str, msa_file_path: str | list[str], constraints: list[dict | None]) -> None:
-    if not isinstance(protein_sequence, list):
-        protein_sequence = [protein_sequence]
-    if not isinstance(msa_file_path, list):
-        msa_file_path = [msa_file_path]
-    assert len(protein_sequence) == len(msa_file_path), "Protein sequence and MSA file paths must have the same length"
+def replace_ligand_id_in_config(obj: dict, ligand_id: str) -> dict:
+    if isinstance(obj, dict):
+        return {k: replace_ligand_id_in_config(v, ligand_id) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [replace_ligand_id_in_config(item, ligand_id) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(replace_ligand_id_in_config(item, ligand_id) for item in obj)
+    elif isinstance(obj, str):
+        # Replace <LIGAND-ID> with the actual ligand ID
+        return obj.replace("<LIGAND-ID>", ligand_id)
+    else:
+        return obj
 
-    yaml_dict = {"sequences": [], "properties": [], "constraints": []}
+
+def prepare_boltz2_yaml_input_file(boltz_input_config_template, ligand_smiles: str, yaml_input_path: str) -> None:
 
     unicode_string_ordinal_id = 65
 
+    yaml_dict = deepcopy(boltz_input_config_template)
+
+    # Find the next character to use as an identifier
+    for seq in yaml_dict["sequences"]:
+        if "protein" in seq:
+            protein_id = seq["protein"]["id"]
+            unicode_string_ordinal_id = max(unicode_string_ordinal_id, ord(protein_id) + 1)
+
     ligand_id = chr(unicode_string_ordinal_id)
-    yaml_dict["sequences"].append({"ligand": {"id": ligand_id, "smiles": ligand_smiles}})
-    yaml_dict["properties"].append({"affinity": {"binder": ligand_id}})
 
-    for protein_seq, msa_path, constraint in zip(protein_sequence, msa_file_path, constraints):
-        protein_id = chr(unicode_string_ordinal_id)
-        unicode_string_ordinal_id += 1
-        yaml_dict["sequences"].append(
-            {"protein": {"id": protein_id, "sequence": protein_seq, "msa": msa_path, "cyclic": False}}
-        )
-        if constraint is not None:
-            constraint[0]["contacts"][0] = protein_id  # Update the first contact with the protein ID
-            constraint["binder"] = ligand_id  # Add the binder ID to the constraint
-            yaml_dict["constraints"].append(constraint)
+    yaml_dict = replace_ligand_id_in_config(yaml_dict, ligand_id)
 
+    yaml_dict["sequences"].append(
+        {
+            "ligand": {
+                "id": ligand_id,
+                "smiles": ligand_smiles,
+            }
+        }
+    )
 
 #    yaml_dict = {
 #        "sequences": [
@@ -364,15 +361,20 @@ def collect_boltz_results(input_dir: str, predictions_path: str, query_name: str
     result_dict["SMILES"] = smiles
 
     mol = Chem.MolFromSmiles(smiles)  # Validate SMILES
-    inchi = Chem.MolToInchi(mol)
+    inchi = Chem.MolToInchiKey(mol)
 
-    boltz_results_from_inchi_path = s3_wizard.get_experiment_s3_prefix() / f"{inchi}"
+    boltz_results_from_inchi_path = s3path.S3Path.from_uri("s3://py65/data/tasks/syn_boltz_cme_687__2025_07_22_203780") / f"{inchi}"
+    logger.info(f"Boltz2 results will be stored in: {s3_wizard.path_to_str(boltz_results_from_inchi_path)}")
 
     # Get both affinity and confidence files
     query_path = Path(predictions_path) / f"{query_name}"
 
-    s3_wizard.copy(input_file_path, boltz_results_from_inchi_path)
-    s3_wizard.copy(query_path, boltz_results_from_inchi_path, dir_hint=True)
+    input_file_boltz_results_from_inchi_path = boltz_results_from_inchi_path / f"/input/{query_name}.yaml"
+
+    query_path_boltz_results_from_inchi_path = boltz_results_from_inchi_path / query_name
+
+    s3_wizard.copy(input_file_path, input_file_boltz_results_from_inchi_path)
+    s3_wizard.copy(query_path, query_path_boltz_results_from_inchi_path, dir_hint=True)
 
     affinity_file_paths = list(query_path.rglob("affinity_*.json"))
     assert len(affinity_file_paths) == 1, f"Expected exactly one affinity file, got {len(affinity_file_paths)}"
@@ -399,7 +401,7 @@ def collect_boltz_results(input_dir: str, predictions_path: str, query_name: str
     return result_dict
 
 
-def compute_rewards_with_boltz(df: pd.DataFrame, protein_sequence: str | list[str], msa_file_path: str | list[str], worker_id: int, constraints: list[dict | None]) -> pd.DataFrame:
+def compute_rewards_with_boltz(df: pd.DataFrame, boltz_input_config_template: dict, worker_id: int) -> pd.DataFrame:
     assert "SMILES" in df.columns, "SMILES column is required"
 
     # Create temporary directory for worker
@@ -419,7 +421,7 @@ def compute_rewards_with_boltz(df: pd.DataFrame, protein_sequence: str | list[st
     for i in df.index:
         query_name = f"query{i}"
         yaml_input_path = f"{input_dir}/{query_name}.yaml"
-        prepare_boltz2_yaml_input_file(protein_sequence, df.at[i, "SMILES"], yaml_input_path, msa_file_path, constraints)
+        prepare_boltz2_yaml_input_file(boltz_input_config_template, df.at[i, "SMILES"], yaml_input_path)
         df.at[i, "query_name"] = query_name
 
     # Run inference
@@ -457,6 +459,4 @@ if __name__ == "__main__":
     with open(args.config) as f:
         config = yaml.safe_load(f)
 
-    experiment_tracking.begin_experiment()
     main(config)
-    experiment_tracking.finish_experiment()

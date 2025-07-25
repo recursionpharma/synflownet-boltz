@@ -12,7 +12,7 @@ class SEHTaskConfig(StrictDataClass):
 @dataclass
 class ReactionTaskConfig(StrictDataClass):
     templates_filename: str = "templates.txt"
-    building_blocks_filename: str = "pharmaron_bbs.txt
+    building_blocks_filename: str = "pharmaron_bbs.txt"
     precomputed_bb_masks_filename: str = "precomputed_bb_masks_pharmaron_bbs.pkl" 
     reverse_templates_filename: Optional[str] = None
     reward: Optional[str] = None
