@@ -91,6 +91,8 @@ class DataSource(IterableDataset):
                     iterator_outputs = [i for i in iterator_outputs if i is not None]
                 else:
                     break
+            if len(iterator_outputs) == 0:
+                logger.error(f"No iterator outputs available, stopping iteration at step {self.current_iter} (worker {self._wid})")
             traj_lists, batch_infos = zip(*iterator_outputs)
             trajs = sum(traj_lists, [])
             # Merge all the dicts into one

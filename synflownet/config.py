@@ -113,7 +113,7 @@ class Config(StrictDataClass):
     data_root: str = "./data"
     repo_root: str = os.path.dirname(__file__)
     seed: int = 0
-    validate_every: Optional[int] = 1000
+    validate_every: Optional[int] = None
     checkpoint_every: Optional[int] = None
     store_all_checkpoints: bool = False
     print_every: int = 100

@@ -134,10 +134,10 @@ class AsyncRewardTrainer(StandardOnlineTrainer):
 
         # Because the reward computation is done externally
         # we don't have any special treatment for validation samples
-        cfg.algo.valid_random_action_prob = 0.02
+        cfg.algo.valid_random_action_prob = 0.0
         cfg.algo.valid_num_from_policy = 0
-        cfg.num_validation_gen_steps = 10
-        cfg.validate_every = 500
+        cfg.num_validation_gen_steps = 0
+        cfg.validate_every = None
         cfg.num_final_gen_steps = 1000
 
         # This task assumes the use of an expensive external reward function
