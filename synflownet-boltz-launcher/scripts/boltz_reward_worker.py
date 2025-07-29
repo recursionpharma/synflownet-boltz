@@ -363,18 +363,21 @@ def collect_boltz_results(input_dir: str, predictions_path: str, query_name: str
     mol = Chem.MolFromSmiles(smiles)  # Validate SMILES
     inchi = Chem.MolToInchiKey(mol)
 
-    boltz_results_from_inchi_path = s3path.S3Path.from_uri("s3://py65/data/tasks/syn_boltz_cme_687__2025_07_22_203780") / f"{inchi}"
+
+    boltz_results_from_inchi_path: s3path.S3Path = s3path.S3Path.from_uri("s3://py65/data/tasks/syn_boltz_hojo_2025_07_28_205284") / f"{inchi}"
     logger.info(f"Boltz2 results will be stored in: {s3_wizard.path_to_str(boltz_results_from_inchi_path)}")
 
     # Get both affinity and confidence files
     query_path = Path(predictions_path) / f"{query_name}"
 
-    input_file_boltz_results_from_inchi_path = boltz_results_from_inchi_path / f"/input/{query_name}.yaml"
+    input_file_boltz_results_from_inchi_path = boltz_results_from_inchi_path / "input" / f"{query_name}.yaml"
+    logger.info(f"Boltz2 input file will be stored in: {s3_wizard.path_to_str(input_file_boltz_results_from_inchi_path)}")
 
     query_path_boltz_results_from_inchi_path = boltz_results_from_inchi_path / query_name
+    logger.info(f"Boltz2 query path will be stored in: {s3_wizard.path_to_str(query_path_boltz_results_from_inchi_path)}")
 
-    s3_wizard.copy(input_file_path, input_file_boltz_results_from_inchi_path)
-    s3_wizard.copy(query_path, query_path_boltz_results_from_inchi_path, dir_hint=True)
+    s3_wizard.copy(input_file_path, s3_wizard.path_to_str(input_file_boltz_results_from_inchi_path))
+    s3_wizard.copy(query_path, s3_wizard.path_to_str(query_path_boltz_results_from_inchi_path), dir_hint=True)
 
     affinity_file_paths = list(query_path.rglob("affinity_*.json"))
     assert len(affinity_file_paths) == 1, f"Expected exactly one affinity file, got {len(affinity_file_paths)}"
