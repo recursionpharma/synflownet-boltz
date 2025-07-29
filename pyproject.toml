@@ -32,21 +32,22 @@ dynamic = [
 ]
 dependencies = [
 	"torch",
-    "torch-geometric",
-    "torch-scatter",
-    "torch-sparse",
-    "torch-cluster",
+	"torch-geometric",
+	"torch-scatter",
+	"torch-sparse",
+	"torch-cluster",
 	"click",
-    "rdkit",
-    "scipy",
-    "networkx",
-    "tensorboard",
+	"rdkit",
+	"scipy",
+	"networkx",
+	"tensorboard",
 	"loguru",
 	"tqdm",
-    "gitpython",
-    "botorch",
-    "omegaconf>=2.3",
-    "wandb",
+	"gitpython",
+	"botorch",
+	"omegaconf>=2.3",
+	"wandb",
+	"cm-utils",
 ]
 
 [project.optional-dependencies]
@@ -134,3 +135,6 @@ section-order = ["future", "standard-library", "third-party", "first-party", "lo
 
 # Add internal packages here as they are added as dependencies
 [tool.ruff.lint.isort.sections]
+
+[tool.uv.sources]
+cm-utils = { git = "https://github.com/fl65inc/cm_utils.git", rev = "1.0.2" }
